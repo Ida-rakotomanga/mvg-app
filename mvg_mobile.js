@@ -295,6 +295,7 @@
     var statusTxt = { none: 'Non configuré', ok: 'À jour', dirty: 'Modifications à envoyer', busy: 'Synchronisation…', err: lastError || 'Erreur', offline: 'Hors ligne — les modifications sont gardées sur l’appareil' }[state] || '';
     h += '<div class="mvg-box"><div style="font-weight:700">' + esc(statusTxt) + '</div>' +
       '<div class="mvg-note">Dernière synchro : ' + esc(fmtDT(c.lastSync)) + '</div></div>';
+    h += '<div class="mvg-box" id="off-status"><span class="mvg-note">Vérification du mode hors ligne…</span></div>';
     h += '<div class="form-grid">' +
       '<div class="fg full"><label class="lbl">Jeton GitHub (classique, droit « gist »)</label><input class="inp" id="sync-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ghp_…" value="' + esc(c.token || '') + '"></div>' +
       '<div class="fg full"><label class="lbl">Mot de passe de chiffrement (le même sur tous vos appareils)</label><input class="inp" id="sync-pass" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Choisissez une phrase longue" value="' + esc(c.pass || '') + '"></div></div>';
@@ -308,6 +309,7 @@
     h += '<div class="modal-actions" style="margin-top:14px"><button class="btn-sm" onclick="MVGSync.close()">Fermer</button>' +
       (configured() ? '<button class="btn-sm danger" style="margin-left:auto" onclick="MVGSync.disconnect()">Déconnecter cet appareil</button>' : '') + '</div>';
     body.innerHTML = h;
+    renderOffline();
   }
 
   function saveAndSync() {
@@ -408,12 +410,71 @@
   /* ────────────────────────────────────────────────────────────────────────
      9. Hors ligne (service worker) + aide d'installation iOS
      ──────────────────────────────────────────────────────────────────────── */
+  var OFF_CACHE = 'mvg-v2';
+  var OFF_FILES = ['index.html', 'mvg_mobile.js', 'fonts.css', 'chart.umd.js', 'xlsx.full.min.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon-32.png'];
+  function offlineCheck() {
+    if (!('serviceWorker' in navigator) || !window.caches) return Promise.resolve({ ok: false, unsupported: true, missing: [] });
+    return navigator.serviceWorker.getRegistration().then(function (reg) {
+      return caches.open(OFF_CACHE).then(function (cache) {
+        return Promise.all(OFF_FILES.map(function (f) { return cache.match(f).then(function (r) { return r ? null : f; }); })).then(function (m) {
+          var missing = m.filter(Boolean), sw = !!(reg && reg.active);
+          return { ok: sw && !missing.length, sw: sw, missing: missing, total: OFF_FILES.length };
+        });
+      });
+    });
+  }
+  function offlineRepair() { // re-télécharge dans la mémoire les fichiers manquants (si connecté)
+    if (!navigator.onLine || !window.caches) return Promise.resolve();
+    return caches.open(OFF_CACHE).then(function (cache) {
+      return Promise.all(OFF_FILES.map(function (f) {
+        return cache.match(f).then(function (hit) {
+          if (hit) return null;
+          return fetch(f, { cache: 'reload' }).then(function (r) { if (r.ok && !r.redirected) return cache.put(f, r); }).catch(function () { /* ignore */ });
+        });
+      }));
+    }).then(function () {
+      if ('serviceWorker' in navigator) return navigator.serviceWorker.register('sw.js').then(function (reg) { return reg.update(); }).catch(function () { /* ignore */ });
+    });
+  }
+  function renderOffline() {
+    var box = $('off-status'); if (!box) return;
+    offlineCheck().then(function (r) {
+      var ios = /iphone|ipad|ipod/i.test(navigator.userAgent), h;
+      if (r.unsupported) h = '<b style="color:var(--rd2)">📴 Hors ligne : indisponible</b><div class="mvg-note">Ouvrez l’app via son adresse https (github.io), pas depuis un fichier.</div>';
+      else if (r.ok) h = '<b style="color:var(--gr3)">📴 Hors ligne : prêt ✓</b><div class="mvg-note">' + r.total + '/' + r.total + ' fichiers en mémoire. L’app s’ouvrira sans connexion.</div>';
+      else {
+        h = '<b style="color:var(--rd2)">📴 Hors ligne : pas encore prêt</b><div class="mvg-note">';
+        if (!r.sw) h += 'Le mode hors ligne n’est pas encore installé sur cet appareil. Connectez-vous à internet, patientez 10 secondes, puis touchez « Réparer ».<br>';
+        if (r.missing.length) h += 'Fichiers non mémorisés : <b>' + esc(r.missing.join(', ')) + '</b>. S’ils n’existent pas sur GitHub, ajoutez-les au dépôt.<br>';
+        h += '</div><div class="modal-actions" style="margin-top:8px"><button class="btn-sm gold" id="off-fix">Réparer le hors-ligne</button></div>';
+      }
+      if (ios && !isStandalone()) h += '<div class="mvg-note" style="margin-top:6px">⚠ Vous êtes dans Safari. Ouvrez l’icône <b>MVG</b> de l’écran d’accueil : elle a sa propre mémoire et doit être ouverte une première fois avec internet.</div>';
+      box.innerHTML = h;
+      var b = $('off-fix'); if (b) b.onclick = function () { b.textContent = 'Réparation…'; offlineRepair().then(function () { setTimeout(renderOffline, 1500); }); };
+    });
+  }
+
   function initSW() {
     if (!('serviceWorker' in navigator)) return;
     var had = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js').catch(function () { /* ignore */ });
     navigator.serviceWorker.addEventListener('controllerchange', function () { if (had) toast('Mise à jour installée — elle s’applique au prochain lancement', 5000); had = true; });
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () { /* ignore */ });
+    // Annonce claire : le patron sait quand il peut couper internet sans risque
+    if (!localStorage.getItem('mvg_off_ok') && navigator.onLine) toast('Installation du mode hors ligne… gardez l’app ouverte quelques secondes', 6000);
+    var tries = 0, iv = setInterval(function () {
+      tries++;
+      offlineCheck().then(function (r) {
+        if (r.ok) {
+          clearInterval(iv);
+          if (!localStorage.getItem('mvg_off_ok')) { try { localStorage.setItem('mvg_off_ok', '1'); } catch (e) { /* ignore */ } toast('✓ Mode hors ligne PRÊT : vous pouvez couper internet', 9000); }
+        } else if (tries >= 40) {
+          clearInterval(iv);
+          if (navigator.onLine) toast('⚠ Hors ligne pas prêt : ouvrez ☁ Sync puis « Réparer »', 9000);
+        }
+      });
+      if (tries >= 40) clearInterval(iv);
+    }, 3000);
   }
   function iosBanner() {
     var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -433,6 +494,7 @@
 
   initDrawer(); initSyncButton(); initSW();
   setTimeout(iosBanner, 2500);
+  setTimeout(offlineRepair, 4000);
   try { chargerVentesDirectes(); } catch (e) { /* ignore */ }
   if (configured()) setTimeout(function () { syncNow({ auto: true }); }, 1200);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && configured()) syncNow({ auto: true }); });
