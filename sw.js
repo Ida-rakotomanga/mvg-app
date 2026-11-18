@@ -1,7 +1,7 @@
 /* MVG — service worker v2 : l'app s'ouvre sans internet.
    Installation TOLÉRANTE : seul index.html est indispensable. Un fichier secondaire
    manquant ne bloque plus le mode hors ligne (il est réparé par l'app ensuite). */
-const VERSION = 'mvg-v3';
+const VERSION = 'mvg-v4';
 const CRITICAL = ['index.html'];
 const OPTIONAL = ['mvg_mobile.js', 'fonts.css', 'chart.umd.js', 'xlsx.full.min.js', 'manifest.webmanifest',
                   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon-32.png'];

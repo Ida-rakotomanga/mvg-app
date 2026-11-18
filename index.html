@@ -311,16 +311,20 @@ tr:hover td{background:var(--s3);color:var(--tx)}
 
 /* ── PRIX / COÛTS / MARGES ── */
 .prix-produit-grid{display:flex;flex-direction:column;gap:6px}
-.prix-letter{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gd2);padding:6px 4px 0;letter-spacing:.1em}
-.prix-acc{background:var(--s2);border:1px solid var(--br);border-radius:var(--r12);overflow:hidden}
-.prix-acc:hover{border-color:var(--br2)}
-.prix-acc-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;background:var(--s3)}
-.prix-acc-chev{font-size:11px;color:var(--tx3);transition:transform .15s;width:10px}
-.prix-acc.open .prix-acc-chev{transform:rotate(90deg)}
-.prix-acc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.prix-acc-price{font-family:var(--mono);font-size:11px;color:var(--gd2);font-weight:700;white-space:nowrap}
-.prix-acc-body{display:none;border-top:1px solid var(--br)}
-.prix-acc.open .prix-acc-body{display:block}
+.pcb{position:relative;max-width:560px}
+.pcb-field{display:flex;align-items:center;background:var(--s2);border:1px solid var(--br);border-radius:var(--r12)}
+.pcb-field:focus-within{border-color:var(--gd2)}
+.pcb-field input{flex:1;background:none;border:0;outline:0;color:var(--tx);padding:9px 12px;font-size:13px;min-width:0}
+.pcb-arrow{background:none;border:0;border-left:1px solid var(--br);color:var(--tx2);cursor:pointer;padding:0 12px;align-self:stretch;font-size:12px}
+.pcb-arrow:hover{color:var(--gd2)}
+.pcb-dd{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;max-height:340px;overflow:auto;background:var(--s2);border:1px solid var(--br2);border-radius:var(--r12);box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.pcb-item{display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;font-size:12.5px;color:var(--tx)}
+.pcb-item:hover{background:var(--s3)}
+.pcb-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcb-price{font-family:var(--mono);font-size:10.5px;color:var(--gd2);white-space:nowrap}
+.pcb-letter{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gd2);padding:6px 12px 2px;letter-spacing:.1em}
+.pcb-empty{padding:12px;font-size:11px;color:var(--tx3)}
+.pcb-dd .bk-bar{padding:6px 10px;margin:0;border-bottom:1px solid var(--br);position:sticky;top:0;background:var(--s2)}
 .bk-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
 .bk-bar .btn-sm{padding:3px 9px;font-size:10px}
 .bk-bar .btn-sm:disabled{opacity:.4;cursor:not-allowed}
@@ -1439,13 +1443,15 @@ tr:hover td{background:var(--s3);color:var(--tx)}
   <!-- Grille des produits -->
   <div>
     <div class="sh"><span class="sh-title">Produits</span></div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-      <input type="text" class="inp" id="prix-search" placeholder="🔍 Rechercher un produit (ordre A–Z)…" style="flex:1;min-width:180px;padding:6px 10px" oninput="window._prixQ=this.value;renderPrix()">
-      <span id="prix-search-count" style="font-family:var(--mono);font-size:10px;color:var(--tx3)"></span>
-      <button class="btn-sm" style="padding:3px 9px;font-size:10px" onclick="prixToggleAll(true)">▾ Tout déplier</button>
-      <button class="btn-sm" style="padding:3px 9px;font-size:10px" onclick="prixToggleAll(false)">▸ Tout replier</button>
+    <div class="pcb" id="prix-combo">
+      <div class="pcb-field">
+        <input type="text" id="prix-search" placeholder="🔍 Rechercher un produit…" autocomplete="off" oninput="prixInput(this.value)" onkeydown="prixKey(event)">
+        <button type="button" class="pcb-arrow" title="Voir tous les produits" onclick="prixArrow(event)">▾</button>
+      </div>
+      <div class="pcb-dd" id="prix-dd"><div id="prix-dd-list"></div></div>
     </div>
-    <div class="prix-produit-grid" id="prix-produit-grid">
+    <div id="prix-detail" style="margin-top:12px"></div>
+    <div class="prix-produit-grid" id="prix-produit-grid" style="display:none">
       <div class="empty" id="prix-empty">Aucun produit — cliquez sur "+ Nouveau produit" pour commencer</div>
     </div>
   </div>
@@ -9418,7 +9424,7 @@ function renderPrix(){
   const prods = DB.prix;
   if(!document.getElementById("prix-kpis")) return;
   if(prods.length===0){
-    document.getElementById("prix-kpis").innerHTML="";
+    document.getElementById("prix-kpis").innerHTML=""; prixRenderDD(); prixRenderDetail();
     document.getElementById("prix-produit-grid").innerHTML=`<div class="empty">Aucun produit — cliquez sur "+ Nouveau produit" pour commencer</div>`;
     document.getElementById("prix-comparison-body").innerHTML=`<tr><td colspan="12" class="empty">Aucun produit</td></tr>`;
     document.getElementById("prix-table-count").textContent="0 produit(s)";
@@ -9434,44 +9440,7 @@ function renderPrix(){
     `<div class="kpi gd"><div class="kpi-label">Prix vente moyen</div><div class="kpi-val gd">${fmtAr(Math.round(totPrix/prods.length))}</div><div class="kpi-sub">tous produits</div></div>`+
     `<div class="kpi gr"><div class="kpi-label">Benefice moyen</div><div class="kpi-val gr">${fmtAr(Math.round(totBenef/prods.length))}</div><div class="kpi-sub">par produit</div></div>`+
     `<div class="kpi ${tauxMoy>=25?"gr":tauxMoy>=15?"am":"rd"}"><div class="kpi-label">Taux benefice moy.</div><div class="kpi-val ${tauxMoy>=25?"gr":tauxMoy>=15?"am":"rd"}">${tauxMoy}%</div><div class="kpi-sub">benefice / prix vente</div></div>`;
-  const _n=x=>(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-  const _q=_n(window._prixQ).trim();
-  const _open=window._prixOpen||(window._prixOpen=new Set());
-  const _sel=(window.BK&&BK.sel["prix-produit-grid"])||new Set();
-  const _list=[...prods].filter(p=>!_q||_n(p.nom).includes(_q)).sort((x,y)=>(x.nom||"").localeCompare(y.nom||"","fr",{sensitivity:"base"}));
-  const _cnt=document.getElementById("prix-search-count"); if(_cnt) _cnt.textContent=_list.length+" / "+prods.length;
-  let _last="";
-  document.getElementById("prix-produit-grid").innerHTML=_list.length?_list.map(p=>{
-    const r=calcProduit(p); const bc=getPrixBadgeClass(r.tauxBenef);
-    const L=(p.nom||"#").trim().charAt(0).toUpperCase()||"#"; const lh=L!==_last?`<div class="prix-letter">${L}</div>`:""; _last=L;
-    return lh+`<div class="prix-acc ${_open.has(p.id)?"open":""}" data-id="${p.id}">
-      <div class="prix-acc-head" onclick="togglePrixAcc('${p.id}')">
-        <input type="checkbox" class="bk-cb" data-bk="prix-produit-grid" data-id="${p.id}" ${_sel.has(String(p.id))?"checked":""} onclick="event.stopPropagation()">
-        <span class="prix-acc-chev">▸</span>
-        <span class="prix-acc-name"><span class="prix-card-name">${p.nom||"Produit"}</span> <span style="font-family:var(--mono);font-size:10px;color:var(--tx3)">${p.grammage||""}</span></span>
-        <span class="prix-acc-price">${fmtAr(r.prixVente)}</span>
-        <span class="prix-badge-benef ${bc}">${r.tauxBenef}%</span>
-        <button class="btn-sm" onclick="event.stopPropagation();editPrixProduit('${p.id}')" style="padding:3px 7px;font-size:10px">✎</button>
-        <button class="btn-sm danger" onclick="event.stopPropagation();deletePrixProduitDirect('${p.id}')" style="padding:3px 7px;font-size:10px">×</button>
-      </div>
-      <div class="prix-acc-body">
-        <div class="prix-card-body">
-          <div class="prix-calc-row"><span class="prix-calc-label">Tissu / matiere</span><span class="prix-calc-val cost">${fmtAr(r.tissu)}</span></div>
-          <div class="prix-calc-row"><span class="prix-calc-label">Main oeuvre (MOE)</span><span class="prix-calc-val cost">${fmtAr(r.moe)}</span></div>
-          <div class="prix-calc-row"><span class="prix-calc-label">Impression</span><span class="prix-calc-val cost">${fmtAr(r.impression)}</span></div>
-          <div class="prix-calc-row"><span class="prix-calc-label">Divers (col+fil+elec)</span><span class="prix-calc-val cost">${fmtAr(r.divers)}</span></div>
-          <div class="prix-divider"></div>
-          <div class="prix-calc-row"><span class="prix-calc-label" style="font-weight:600;color:var(--tx)">Cout total</span><span class="prix-calc-val cost" style="font-size:14px">${fmtAr(r.cout)}</span></div>
-          <div class="prix-calc-row"><span class="prix-calc-label">Marge Ar</span><span class="prix-calc-val marge">${fmtAr(r.margeAr)}</span></div>
-        </div>
-        <div class="prix-summary-row">
-          <div class="prix-summary-item"><div class="prix-summary-label">Benefice</div><div class="prix-summary-val" style="color:var(--gr3)">${fmtAr(r.benefice)}</div></div>
-          <div class="prix-summary-item"><div class="prix-summary-label">Taux</div><div class="prix-summary-val" style="color:var(--vi2)">${r.tauxBenef}%</div></div>
-          <div class="prix-summary-item"><div class="prix-summary-label">Coef. marge</div><div class="prix-summary-val" style="color:var(--am2)">x${p.prixManuel&&p.prixManuel>0?"Manuel":(p.margeCoef||1.25)}</div></div>
-        </div>
-      </div>
-    </div>`;
-  }).join(""):`<div class="empty">Aucun produit trouvé</div>`;
+  prixRenderDD(); prixRenderDetail();
   document.getElementById("prix-table-count").textContent=prods.length+" produit(s)";
   const totals=prods.reduce((a,p)=>{const r=calcProduit(p);a.cout+=r.cout;a.prixVente+=r.prixVente;a.benefice+=r.benefice;return a;},{cout:0,prixVente:0,benefice:0});
   document.getElementById("prix-table-totals").textContent="CA potentiel: "+fmtAr(totals.prixVente)+" | Benefice total: "+fmtAr(totals.benefice);
@@ -10359,12 +10328,68 @@ init();
 // Init calculateurs impression
 setTimeout(()=>{calcDTF();calcSeri();calcBrod();calcFlex();},500);
 
-function togglePrixAcc(id){
-  const o=window._prixOpen||(window._prixOpen=new Set());
-  o.has(id)?o.delete(id):o.add(id);
-  const el=document.querySelector('.prix-acc[data-id="'+id+'"]'); if(el) el.classList.toggle("open",o.has(id));
+function _pn(x){return (x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
+function prixRenderDD(){
+  const list=document.getElementById("prix-dd-list"), dd=document.getElementById("prix-dd"); if(!list||!dd) return;
+  const q=_pn(window._prixQ).trim(), mode=window._prixMode;
+  const sel=(window.BK&&BK.sel["prix-dd-list"])||new Set();
+  let arr=[...(DB.prix||[])].sort((x,y)=>(x.nom||"").localeCompare(y.nom||"","fr",{sensitivity:"base"}));
+  if(mode!=="all"){
+    arr=q?arr.filter(p=>_pn(p.nom).includes(q)).sort((x,y)=>(_pn(y.nom).startsWith(q)?1:0)-(_pn(x.nom).startsWith(q)?1:0)).slice(0,8):[];
+  }
+  dd.style.display=(mode==="all"||(mode==="suggest"&&q))?"block":"none";
+  let last="";
+  list.innerHTML=arr.length?arr.map(p=>{
+    const r=calcProduit(p), L=(p.nom||"#").trim().charAt(0).toUpperCase()||"#";
+    const lh=(mode==="all"&&L!==last)?'<div class="pcb-letter">'+L+'</div>':""; last=L;
+    return lh+'<div class="pcb-item" data-id="'+p.id+'" onclick="prixPick(\''+p.id+'\')">'+
+      '<input type="checkbox" class="bk-cb" data-bk="prix-dd-list" data-id="'+p.id+'"'+(sel.has(String(p.id))?" checked":"")+' onclick="event.stopPropagation()">'+
+      '<span class="pcb-name">'+(p.nom||"Produit")+'</span><span class="pcb-price">'+fmtAr(r.prixVente)+'</span></div>';
+  }).join(""):'<div class="pcb-empty">Aucun produit trouvé</div>';
 }
-function prixToggleAll(open){ window._prixOpen=new Set(open?(DB.prix||[]).map(p=>p.id):[]); renderPrix(); }
+function prixRenderDetail(){
+  const el=document.getElementById("prix-detail"); if(!el) return;
+  const p=(DB.prix||[]).find(x=>x.id===window._prixSel);
+  if(!p){ el.innerHTML=""; return; }
+  const r=calcProduit(p), bc=getPrixBadgeClass(r.tauxBenef);
+  el.innerHTML=`<div class="prix-card" style="max-width:560px">
+    <div class="prix-card-header">
+      <div><div class="prix-card-name">${p.nom||"Produit"}</div><div style="font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:2px">${p.grammage||"—"}</div></div>
+      <div style="display:flex;gap:5px"><span class="prix-badge-benef ${bc}">${r.tauxBenef}%</span>
+        <button class="btn-sm" onclick="editPrixProduit('${p.id}')" style="padding:3px 7px;font-size:10px">✎</button>
+        <button class="btn-sm danger" onclick="deletePrixProduitDirect('${p.id}')" style="padding:3px 7px;font-size:10px">×</button></div>
+    </div>
+    <div class="prix-card-body">
+      <div class="prix-calc-row"><span class="prix-calc-label">Tissu / matiere</span><span class="prix-calc-val cost">${fmtAr(r.tissu)}</span></div>
+      <div class="prix-calc-row"><span class="prix-calc-label">Main oeuvre (MOE)</span><span class="prix-calc-val cost">${fmtAr(r.moe)}</span></div>
+      <div class="prix-calc-row"><span class="prix-calc-label">Impression</span><span class="prix-calc-val cost">${fmtAr(r.impression)}</span></div>
+      <div class="prix-calc-row"><span class="prix-calc-label">Divers (col+fil+elec)</span><span class="prix-calc-val cost">${fmtAr(r.divers)}</span></div>
+      <div class="prix-divider"></div>
+      <div class="prix-calc-row"><span class="prix-calc-label" style="font-weight:600;color:var(--tx)">Cout total</span><span class="prix-calc-val cost" style="font-size:14px">${fmtAr(r.cout)}</span></div>
+      <div class="prix-calc-row"><span class="prix-calc-label">Marge Ar</span><span class="prix-calc-val marge">${fmtAr(r.margeAr)}</span></div>
+      <div class="prix-calc-row"><span class="prix-calc-label" style="font-weight:600;color:var(--tx)">Prix de vente</span><span class="prix-calc-val prix" style="font-size:14px">${fmtAr(r.prixVente)}</span></div>
+    </div>
+    <div class="prix-summary-row">
+      <div class="prix-summary-item"><div class="prix-summary-label">Benefice</div><div class="prix-summary-val" style="color:var(--gr3)">${fmtAr(r.benefice)}</div></div>
+      <div class="prix-summary-item"><div class="prix-summary-label">Taux</div><div class="prix-summary-val" style="color:var(--vi2)">${r.tauxBenef}%</div></div>
+      <div class="prix-summary-item"><div class="prix-summary-label">Coef. marge</div><div class="prix-summary-val" style="color:var(--am2)">x${p.prixManuel&&p.prixManuel>0?"Manuel":(p.margeCoef||1.25)}</div></div>
+    </div></div>`;
+}
+function prixInput(v){ window._prixQ=v; window._prixMode="suggest"; prixRenderDD(); }
+function prixArrow(e){ e.stopPropagation(); window._prixMode=(window._prixMode==="all")?null:"all"; prixRenderDD(); }
+function prixPick(id){
+  const p=(DB.prix||[]).find(x=>x.id===id); if(!p) return;
+  window._prixSel=id; window._prixMode=null; window._prixQ="";
+  const i=document.getElementById("prix-search"); if(i) i.value=p.nom||"";
+  prixRenderDD(); prixRenderDetail();
+}
+function prixKey(e){
+  if(e.key==="Escape"){ window._prixMode=null; prixRenderDD(); }
+  if(e.key==="Enter"){ const f=document.querySelector("#prix-dd-list .pcb-item"); if(f) prixPick(f.dataset.id); }
+}
+document.addEventListener("click",e=>{
+  if(window._prixMode&&!(e.target.closest&&e.target.closest("#prix-combo"))){ window._prixMode=null; prixRenderDD(); }
+});
 
 /* ===== Sélection multiple & suppression groupée ===== */
 window.BK={
@@ -10376,7 +10401,7 @@ window.BK={
     "cmd-table":{key:"commandes",label:"commande(s)"},
     "charges-table":{key:"charges",label:"charge(s)"},
     "ventes-table":{key:"ventesDirectes",label:"vente(s) directe(s)"},
-    "prix-produit-grid":{key:"prix",label:"produit(s)"}
+    "prix-dd-list":{key:"prix",label:"produit(s)"}
   },
   rx:/(?:editCommande|openModal(?:Charge|Client|Fournisseur|Matiere|Vente))\('([^']+)'/,
   set(n){return this.sel[n]||(this.sel[n]=new Set());},
@@ -10392,7 +10417,7 @@ window.BK={
     anchor.parentNode.insertBefore(b,anchor); return b;
   },
   inject(n){
-    if(n==="prix-produit-grid") return;
+    if(n==="prix-dd-list") return;
     const box=this.box(n);
     box.querySelectorAll("tr").forEach(tr=>{
       if(tr.querySelector(".bk-cb")) return;
