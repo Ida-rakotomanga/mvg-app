@@ -338,7 +338,7 @@
   /* ────────────────────────────────────────────────────────────────────────
      7. Ventes rapides (remplace la saisie de MVG_WATCHER.pyw)
      ──────────────────────────────────────────────────────────────────────── */
-  var CANAUX = { ventes_store: '🏪 Store MVG', ventes_facebook: '📘 Facebook', ventes_instagram: '📸 Instagram' };
+  var CANAUX = { ventes_store: '🏪 Store', ventes_facebook: '📘 Facebook', ventes_instagram: '📸 Instagram' };
   function vrStore() { if (!DB.ventesRapides) DB.ventesRapides = { ventes_store: [], ventes_facebook: [], ventes_instagram: [], commandes: [] }; return DB.ventesRapides; }
   function buildQuick() {
     if ($('modal-vr')) return;
@@ -393,7 +393,7 @@
      8. Sauvegarde fichier adaptée à l'iPhone (feuille de partage → Fichiers)
      ──────────────────────────────────────────────────────────────────────── */
   function exportBackup() {
-    var name = 'mvg_v5_' + today() + '.json';
+    var name = (typeof BSLUG === 'function' ? BSLUG() : 'mvg') + '_v5_' + today() + '.json';
     var blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
     try {
       var file = new File([blob], name, { type: 'application/json' });
