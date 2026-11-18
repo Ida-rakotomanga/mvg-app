@@ -310,7 +310,21 @@ tr:hover td{background:var(--s3);color:var(--tx)}
 /* CAL BADGE */
 
 /* ── PRIX / COÛTS / MARGES ── */
-.prix-produit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.prix-produit-grid{display:flex;flex-direction:column;gap:6px}
+.prix-letter{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gd2);padding:6px 4px 0;letter-spacing:.1em}
+.prix-acc{background:var(--s2);border:1px solid var(--br);border-radius:var(--r12);overflow:hidden}
+.prix-acc:hover{border-color:var(--br2)}
+.prix-acc-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;background:var(--s3)}
+.prix-acc-chev{font-size:11px;color:var(--tx3);transition:transform .15s;width:10px}
+.prix-acc.open .prix-acc-chev{transform:rotate(90deg)}
+.prix-acc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prix-acc-price{font-family:var(--mono);font-size:11px;color:var(--gd2);font-weight:700;white-space:nowrap}
+.prix-acc-body{display:none;border-top:1px solid var(--br)}
+.prix-acc.open .prix-acc-body{display:block}
+.bk-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.bk-bar .btn-sm{padding:3px 9px;font-size:10px}
+.bk-bar .btn-sm:disabled{opacity:.4;cursor:not-allowed}
+.bk-cb{width:15px;height:15px;cursor:pointer;accent-color:var(--gd2)}
 .prix-card{background:var(--s2);border:1px solid var(--br);border-radius:var(--r12);overflow:hidden;transition:border-color .2s}
 .prix-card:hover{border-color:var(--br2)}
 .prix-card-header{padding:12px 15px;background:var(--s3);border-bottom:1px solid var(--br);display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -1425,6 +1439,12 @@ tr:hover td{background:var(--s3);color:var(--tx)}
   <!-- Grille des produits -->
   <div>
     <div class="sh"><span class="sh-title">Produits</span></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <input type="text" class="inp" id="prix-search" placeholder="🔍 Rechercher un produit (ordre A–Z)…" style="flex:1;min-width:180px;padding:6px 10px" oninput="window._prixQ=this.value;renderPrix()">
+      <span id="prix-search-count" style="font-family:var(--mono);font-size:10px;color:var(--tx3)"></span>
+      <button class="btn-sm" style="padding:3px 9px;font-size:10px" onclick="prixToggleAll(true)">▾ Tout déplier</button>
+      <button class="btn-sm" style="padding:3px 9px;font-size:10px" onclick="prixToggleAll(false)">▸ Tout replier</button>
+    </div>
     <div class="prix-produit-grid" id="prix-produit-grid">
       <div class="empty" id="prix-empty">Aucun produit — cliquez sur "+ Nouveau produit" pour commencer</div>
     </div>
@@ -9414,35 +9434,44 @@ function renderPrix(){
     `<div class="kpi gd"><div class="kpi-label">Prix vente moyen</div><div class="kpi-val gd">${fmtAr(Math.round(totPrix/prods.length))}</div><div class="kpi-sub">tous produits</div></div>`+
     `<div class="kpi gr"><div class="kpi-label">Benefice moyen</div><div class="kpi-val gr">${fmtAr(Math.round(totBenef/prods.length))}</div><div class="kpi-sub">par produit</div></div>`+
     `<div class="kpi ${tauxMoy>=25?"gr":tauxMoy>=15?"am":"rd"}"><div class="kpi-label">Taux benefice moy.</div><div class="kpi-val ${tauxMoy>=25?"gr":tauxMoy>=15?"am":"rd"}">${tauxMoy}%</div><div class="kpi-sub">benefice / prix vente</div></div>`;
-  document.getElementById("prix-produit-grid").innerHTML=prods.map(p=>{
+  const _n=x=>(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const _q=_n(window._prixQ).trim();
+  const _open=window._prixOpen||(window._prixOpen=new Set());
+  const _sel=(window.BK&&BK.sel["prix-produit-grid"])||new Set();
+  const _list=[...prods].filter(p=>!_q||_n(p.nom).includes(_q)).sort((x,y)=>(x.nom||"").localeCompare(y.nom||"","fr",{sensitivity:"base"}));
+  const _cnt=document.getElementById("prix-search-count"); if(_cnt) _cnt.textContent=_list.length+" / "+prods.length;
+  let _last="";
+  document.getElementById("prix-produit-grid").innerHTML=_list.length?_list.map(p=>{
     const r=calcProduit(p); const bc=getPrixBadgeClass(r.tauxBenef);
-    return `<div class="prix-card">
-      <div class="prix-card-header">
-        <div><div class="prix-card-name">${p.nom||"Produit"}</div><div style="font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:2px">${p.grammage||"—"}</div></div>
-        <div style="display:flex;gap:5px">
-          <span class="prix-badge-benef ${bc}">${r.tauxBenef}%</span>
-          <button class="btn-sm" onclick="editPrixProduit('${p.id}')" style="padding:3px 7px;font-size:10px">✎</button>
-          <button class="btn-sm danger" onclick="deletePrixProduitDirect('${p.id}')" style="padding:3px 7px;font-size:10px">×</button>
+    const L=(p.nom||"#").trim().charAt(0).toUpperCase()||"#"; const lh=L!==_last?`<div class="prix-letter">${L}</div>`:""; _last=L;
+    return lh+`<div class="prix-acc ${_open.has(p.id)?"open":""}" data-id="${p.id}">
+      <div class="prix-acc-head" onclick="togglePrixAcc('${p.id}')">
+        <input type="checkbox" class="bk-cb" data-bk="prix-produit-grid" data-id="${p.id}" ${_sel.has(String(p.id))?"checked":""} onclick="event.stopPropagation()">
+        <span class="prix-acc-chev">▸</span>
+        <span class="prix-acc-name"><span class="prix-card-name">${p.nom||"Produit"}</span> <span style="font-family:var(--mono);font-size:10px;color:var(--tx3)">${p.grammage||""}</span></span>
+        <span class="prix-acc-price">${fmtAr(r.prixVente)}</span>
+        <span class="prix-badge-benef ${bc}">${r.tauxBenef}%</span>
+        <button class="btn-sm" onclick="event.stopPropagation();editPrixProduit('${p.id}')" style="padding:3px 7px;font-size:10px">✎</button>
+        <button class="btn-sm danger" onclick="event.stopPropagation();deletePrixProduitDirect('${p.id}')" style="padding:3px 7px;font-size:10px">×</button>
+      </div>
+      <div class="prix-acc-body">
+        <div class="prix-card-body">
+          <div class="prix-calc-row"><span class="prix-calc-label">Tissu / matiere</span><span class="prix-calc-val cost">${fmtAr(r.tissu)}</span></div>
+          <div class="prix-calc-row"><span class="prix-calc-label">Main oeuvre (MOE)</span><span class="prix-calc-val cost">${fmtAr(r.moe)}</span></div>
+          <div class="prix-calc-row"><span class="prix-calc-label">Impression</span><span class="prix-calc-val cost">${fmtAr(r.impression)}</span></div>
+          <div class="prix-calc-row"><span class="prix-calc-label">Divers (col+fil+elec)</span><span class="prix-calc-val cost">${fmtAr(r.divers)}</span></div>
+          <div class="prix-divider"></div>
+          <div class="prix-calc-row"><span class="prix-calc-label" style="font-weight:600;color:var(--tx)">Cout total</span><span class="prix-calc-val cost" style="font-size:14px">${fmtAr(r.cout)}</span></div>
+          <div class="prix-calc-row"><span class="prix-calc-label">Marge Ar</span><span class="prix-calc-val marge">${fmtAr(r.margeAr)}</span></div>
+        </div>
+        <div class="prix-summary-row">
+          <div class="prix-summary-item"><div class="prix-summary-label">Benefice</div><div class="prix-summary-val" style="color:var(--gr3)">${fmtAr(r.benefice)}</div></div>
+          <div class="prix-summary-item"><div class="prix-summary-label">Taux</div><div class="prix-summary-val" style="color:var(--vi2)">${r.tauxBenef}%</div></div>
+          <div class="prix-summary-item"><div class="prix-summary-label">Coef. marge</div><div class="prix-summary-val" style="color:var(--am2)">x${p.prixManuel&&p.prixManuel>0?"Manuel":(p.margeCoef||1.25)}</div></div>
         </div>
       </div>
-      <div class="prix-card-body">
-        <div class="prix-section-label">Decomposition du cout</div>
-        <div class="prix-calc-row"><span class="prix-calc-label">Tissu / matiere</span><span class="prix-calc-val cost">${fmtAr(r.tissu)}</span></div>
-        <div class="prix-calc-row"><span class="prix-calc-label">Main oeuvre (MOE)</span><span class="prix-calc-val cost">${fmtAr(r.moe)}</span></div>
-        <div class="prix-calc-row"><span class="prix-calc-label">Impression</span><span class="prix-calc-val cost">${fmtAr(r.impression)}</span></div>
-        <div class="prix-calc-row"><span class="prix-calc-label">Divers (col+fil+elec)</span><span class="prix-calc-val cost">${fmtAr(r.divers)}</span></div>
-        <div class="prix-divider"></div>
-        <div class="prix-calc-row"><span class="prix-calc-label" style="font-weight:600;color:var(--tx)">Cout total</span><span class="prix-calc-val cost" style="font-size:14px">${fmtAr(r.cout)}</span></div>
-        <div class="prix-calc-row"><span class="prix-calc-label">Marge Ar</span><span class="prix-calc-val marge">${fmtAr(r.margeAr)}</span></div>
-        <div class="prix-calc-row"><span class="prix-calc-label" style="font-weight:600;color:var(--tx)">Prix de vente</span><span class="prix-calc-val prix" style="font-size:14px">${fmtAr(r.prixVente)}</span></div>
-      </div>
-      <div class="prix-summary-row">
-        <div class="prix-summary-item"><div class="prix-summary-label">Benefice</div><div class="prix-summary-val" style="color:var(--gr3)">${fmtAr(r.benefice)}</div></div>
-        <div class="prix-summary-item"><div class="prix-summary-label">Taux</div><div class="prix-summary-val" style="color:var(--vi2)">${r.tauxBenef}%</div></div>
-        <div class="prix-summary-item"><div class="prix-summary-label">Coef. marge</div><div class="prix-summary-val" style="color:var(--am2)">x${p.prixManuel&&p.prixManuel>0?"Manuel":(p.margeCoef||1.25)}</div></div>
-      </div>
     </div>`;
-  }).join("");
+  }).join(""):`<div class="empty">Aucun produit trouvé</div>`;
   document.getElementById("prix-table-count").textContent=prods.length+" produit(s)";
   const totals=prods.reduce((a,p)=>{const r=calcProduit(p);a.cout+=r.cout;a.prixVente+=r.prixVente;a.benefice+=r.benefice;return a;},{cout:0,prixVente:0,benefice:0});
   document.getElementById("prix-table-totals").textContent="CA potentiel: "+fmtAr(totals.prixVente)+" | Benefice total: "+fmtAr(totals.benefice);
@@ -10329,6 +10358,84 @@ document.querySelector("[onclick=\"openModal('modal-commande')\"]").addEventList
 init();
 // Init calculateurs impression
 setTimeout(()=>{calcDTF();calcSeri();calcBrod();calcFlex();},500);
+
+function togglePrixAcc(id){
+  const o=window._prixOpen||(window._prixOpen=new Set());
+  o.has(id)?o.delete(id):o.add(id);
+  const el=document.querySelector('.prix-acc[data-id="'+id+'"]'); if(el) el.classList.toggle("open",o.has(id));
+}
+function prixToggleAll(open){ window._prixOpen=new Set(open?(DB.prix||[]).map(p=>p.id):[]); renderPrix(); }
+
+/* ===== Sélection multiple & suppression groupée ===== */
+window.BK={
+  sel:{},
+  cfg:{
+    "clients-table":{key:"clients",label:"client(s)"},
+    "fournisseurs-table":{key:"fournisseurs",label:"fournisseur(s)"},
+    "matieres-table":{key:"matieresPremieres",label:"matière(s) première(s)"},
+    "cmd-table":{key:"commandes",label:"commande(s)"},
+    "charges-table":{key:"charges",label:"charge(s)"},
+    "ventes-table":{key:"ventesDirectes",label:"vente(s) directe(s)"},
+    "prix-produit-grid":{key:"prix",label:"produit(s)"}
+  },
+  rx:/(?:editCommande|openModal(?:Charge|Client|Fournisseur|Matiere|Vente))\('([^']+)'/,
+  set(n){return this.sel[n]||(this.sel[n]=new Set());},
+  box(n){return document.getElementById(n);},
+  cbs(n){const b=this.box(n);return b?[...b.querySelectorAll(".bk-cb")]:[];},
+  bar(n){
+    let b=document.getElementById("bk-bar-"+n); if(b) return b;
+    const box=this.box(n); const anchor=box.closest(".table-card")||box;
+    b=document.createElement("div"); b.id="bk-bar-"+n; b.className="bk-bar";
+    b.innerHTML='<button class="btn-sm" onclick="BK.all(\''+n+'\',true)">☑ Tout sélectionner</button>'+
+      '<button class="btn-sm" onclick="BK.all(\''+n+'\',false)">☐ Tout désélectionner</button>'+
+      '<button class="btn-sm danger" id="bk-del-'+n+'" onclick="BK.del(\''+n+'\')" disabled>🗑 Supprimer la sélection</button>';
+    anchor.parentNode.insertBefore(b,anchor); return b;
+  },
+  inject(n){
+    if(n==="prix-produit-grid") return;
+    const box=this.box(n);
+    box.querySelectorAll("tr").forEach(tr=>{
+      if(tr.querySelector(".bk-cb")) return;
+      const m=this.rx.exec(tr.innerHTML); if(!m) return;
+      const td=document.createElement("td"); td.style.width="28px";
+      td.innerHTML='<input type="checkbox" class="bk-cb" data-bk="'+n+'" data-id="'+m[1]+'">';
+      tr.insertBefore(td,tr.firstChild);
+    });
+    const hr=box.closest("table")&&box.closest("table").querySelector("thead tr");
+    if(hr&&!hr.querySelector(".bk-th")){const h=document.createElement("th");h.className="bk-th";h.style.width="28px";hr.insertBefore(h,hr.firstChild);}
+  },
+  sync(n){
+    if(!this.box(n)) return;
+    this.inject(n);
+    const s=this.set(n), ids=new Set();
+    this.cbs(n).forEach(c=>{ids.add(c.dataset.id); c.checked=s.has(c.dataset.id);});
+    [...s].forEach(i=>{if(!ids.has(i)) s.delete(i);});
+    this.upd(n);
+  },
+  upd(n){
+    const k=this.set(n).size, d=document.getElementById("bk-del-"+n); if(!d) return;
+    d.disabled=!k; d.textContent="🗑 Supprimer"+(k?" ("+k+")":" la sélection");
+  },
+  all(n,v){const s=this.set(n); this.cbs(n).forEach(c=>{c.checked=v; v?s.add(c.dataset.id):s.delete(c.dataset.id);}); this.upd(n);},
+  del(n){
+    const c=this.cfg[n], s=this.set(n); if(!s.size) return;
+    if(!confirm("Supprimer définitivement "+s.size+" "+c.label+" ?\n\nCette action est irréversible (pensez à faire un Export JSON avant).")) return;
+    DB[c.key]=(DB[c.key]||[]).filter(x=>!s.has(String(x.id)));
+    s.clear(); save();
+  },
+  init(){
+    Object.keys(this.cfg).forEach(n=>{
+      const box=this.box(n); if(!box) return;
+      this.bar(n); this.sync(n);
+      new MutationObserver(()=>this.sync(n)).observe(box,{childList:true});
+    });
+  }
+};
+document.addEventListener("change",e=>{
+  const t=e.target; if(!t.classList||!t.classList.contains("bk-cb")) return;
+  const n=t.dataset.bk, s=BK.set(n); t.checked?s.add(t.dataset.id):s.delete(t.dataset.id); BK.upd(n);
+});
+BK.init();
 </script>
 <script src="mvg_mobile.js"></script>
 </body>
